@@ -10,6 +10,13 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import os
 import logging
+import argparse
+
+parser = argparse.ArgumentParser(description="A script to automatically build your Anki flashcards.")
+parser.add_argument('--language', type=str, choices=['en', 'cn'], 
+                    help="Select language en for English, cn for Chinese.", 
+                    default='en')  # Language argument with limited choices
+args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -111,10 +118,21 @@ def add_word_info_to_note(note_id, audio_file_name, definition, examples):
     # print("AnkiConnect response:", response)
 
 # Function to get TTS audio URL from Cambridge Dictionary
-def get_cambridge_word_info(word):
+def get_cambridge_word_info(word, language):
     # Replace spaces with hyphens for the search URL
     formatted_word = word.replace(' ', '-')
-    url = f'https://dictionary.cambridge.org/dictionary/english/{formatted_word}'
+
+    language_dict = {
+        'en': {'uri':'english', 'tag':'div', 'class':'def ddef_d db'},
+        'cn': {'uri':'english-chinese-simplified', 'tag':'div', 'class':'tc-bb tb lpb-25 break-cj'},
+    }
+
+    if language not in language_dict:
+        logging.error(f"Language '{language}' is not supported.")
+        return None
+
+    url = f"https://dictionary.cambridge.org/dictionary/{language_dict[language]['uri']}/{formatted_word}"
+
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}    
 
     try:
@@ -135,7 +153,8 @@ def get_cambridge_word_info(word):
         audio_url = "https://dictionary.cambridge.org{}".format(audio_tag['src'])
     
     # Retrieve the definition
-    definition_tag = soup.find('div', {'class': 'def ddef_d db'})
+    # definition_tag = soup.find('div', {'class': 'def ddef_d db'})
+    definition_tag = soup.find(language_dict[language]['tag'], {'class': language_dict[language]['class']})
     definition = definition_tag.text.strip().rstrip(':') if definition_tag else 'No definition found.'
     
     # Retrieve the examples
@@ -256,7 +275,8 @@ def main(deck_name):
             continue
 
         # Use Cambridge by default then go to VocalWare
-        cambridge_word_info = get_cambridge_word_info(word)
+        LANGUAGE = args.language
+        cambridge_word_info = get_cambridge_word_info(word, language=LANGUAGE)
         audio_url = cambridge_word_info['audio_url']
         word_definition = cambridge_word_info['definition']
         word_examples = cambridge_word_info['examples']
