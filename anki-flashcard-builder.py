@@ -16,6 +16,9 @@ parser = argparse.ArgumentParser(description="A script to automatically build yo
 parser.add_argument('--language', type=str, choices=['en', 'cn'], 
                     help="Select language en for English, cn for Chinese.", 
                     default='en')  # Language argument with limited choices
+parser.add_argument('--audio-only', 
+                    action='store_true',  # Switch to enable this mode
+                    help="If specified, only audio links will be applied to each flashcard.")
 args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
@@ -91,8 +94,8 @@ def add_word_info_to_note(note_id, audio_file_name, definition, examples):
     # print(f"Definition: {definition}")
     # print(f"Extra information (Examples): {examples_text}")
 
-    # Construct payload for AnkiConnect
-    payload = {
+    if args.audio_only:
+        payload = {
         "action": "updateNoteFields",
         "version": 6,
         "params": {
@@ -100,12 +103,26 @@ def add_word_info_to_note(note_id, audio_file_name, definition, examples):
                 "id": note_id,
                 "fields": {
                     "Audio": f"[sound:{audio_file_name}]",
-                    "Definition": definition,
-                    "Extra information": examples_text  # Correct field name with <br> for line breaks
                 }
             }
         }
-    }
+        }
+    else:
+        # Construct payload for AnkiConnect
+        payload = {
+            "action": "updateNoteFields",
+            "version": 6,
+            "params": {
+                "note": {
+                    "id": note_id,
+                    "fields": {
+                        "Audio": f"[sound:{audio_file_name}]",
+                        "Definition": definition,
+                        "Extra information": examples_text  # Correct field name with <br> for line breaks
+                    }
+                }
+            }
+        }
 
     # Send request to AnkiConnect
     response = requests.post(ANKI_CONNECT_URL, json=payload).json()
@@ -121,6 +138,7 @@ def add_word_info_to_note(note_id, audio_file_name, definition, examples):
 def get_cambridge_word_info(word, language):
     # Replace spaces with hyphens for the search URL
     formatted_word = word.replace(' ', '-')
+    formatted_word = word.replace('/', ' or ')
 
     language_dict = {
         'en': {'uri':'english', 'tag':'div', 'class':'def ddef_d db'},
@@ -151,6 +169,8 @@ def get_cambridge_word_info(word, language):
     
     if audio_tag and 'src' in audio_tag.attrs:
         audio_url = "https://dictionary.cambridge.org{}".format(audio_tag['src'])
+    else:
+        audio_url = get_vocalware_tts_url(word)
     
     # Retrieve the definition
     # definition_tag = soup.find('div', {'class': 'def ddef_d db'})
@@ -280,6 +300,7 @@ def main(deck_name):
         audio_url = cambridge_word_info['audio_url']
         word_definition = cambridge_word_info['definition']
         word_examples = cambridge_word_info['examples']
+        
         file_name = "cambridge"
         if not audio_url:
             audio_url = get_vocalware_tts_url(word)
